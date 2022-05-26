@@ -1,9 +1,72 @@
+# +
 from mmdet.apis import init_detector, inference_detector, show_result_pyplot
 import mmcv
 import json
 import glob
 import numpy as np
 from tqdm import tqdm
+from PIL import Image, ImageColor, ImageFilter, ImageDraw
+import xml.etree.ElementTree as ET
+from tqdm import tqdm
+
+
+class F1Score:
+    def __init__(self, IoU_thresh=0.5, area_thresh=1000):
+        self.true_positive = 0
+        self.false_positive = 0
+        self.truth_count = 0
+        self._iou_thresh = IoU_thresh
+        self._area_thresh = area_thresh
+        self._iou_total = 0
+        self._iou_count = 0
+
+    def update_state(self, n_truth, IoUs, areas=None):
+        if areas is not None:
+            IoUs = [i for (i, a) in zip(IoUs, areas) if a > self._area_thresh]
+        self._iou_total += sum(IoUs)
+        self._iou_count += len(IoUs)
+        n_tp = sum(1 for i in IoUs if i >= self._iou_thresh)
+        n_fp = len(IoUs) - n_tp
+        self.true_positive += n_tp
+        self.false_positive += n_fp
+        self.truth_count += n_truth
+
+    @property
+    def precision(self):
+        return self.true_positive / max(1, self.true_positive + self.false_positive)
+
+    @property
+    def recall(self):
+        return self.true_positive / max(1, self.truth_count)
+
+    @property
+    def f1(self):
+        return (2 * self.precision * self.recall) / max(1, self.precision + self.recall)
+
+    @property
+    def iou(self):
+        return self._iou_total / max(1, self._iou_count)
+    
+    
+def read_sample(xml_file):
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+    bboxes = []
+    for object_ in root.iter('object'):
+        ymin, xmin, ymax, xmax = None, None, None, None
+        for box in object_.findall("bndbox"):
+            ymin = int(box.find("ymin").text)
+            xmin = int(box.find("xmin").text)
+            ymax = int(box.find("ymax").text)
+            xmax = int(box.find("xmax").text)
+
+        bbox = [xmin, ymin, xmax, ymax] # PASCAL VOC
+        bboxes.append(bbox)
+    im_file = root.find("filename").text
+    return im_file, bboxes
+
+
+# -
 
 
 OUT_DIR="/home/ubuntu/WikiDTEval"
